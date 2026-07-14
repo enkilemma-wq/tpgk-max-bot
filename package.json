@@ -1,0 +1,24 @@
+{
+  "name": "tpgk",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc",
+    "start": "cross-env NODE_EXTRA_CA_CERTS=.certs/russian_trusted_ca_bundle.pem node dist/main.js",
+    "dev": "cross-env NODE_EXTRA_CA_CERTS=.certs/russian_trusted_ca_bundle.pem ts-node src/main.ts",
+    "migrate": "ts-node src/infrastructure/db/migrate.ts"
+  },
+  "dependencies": {
+    "@maxhub/max-bot-api": "^0.2.4",
+    "dotenv": "^16.4.5",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "ts-node": "^10.9.2",
+    "@types/node": "^20.14.0",
+    "@types/pg": "^8.11.10",
+    "cross-env": "^7.0.3"
+  }
+}
