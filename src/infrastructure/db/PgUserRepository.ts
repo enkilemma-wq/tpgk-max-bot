@@ -25,9 +25,12 @@ export class PgUserRepository implements UserRepository {
   constructor(private readonly pool: Pool) {}
 
   async registerStart(user: StartedUserInfo): Promise<void> {
+    // Самый первый человек, когда-либо выполнивший /reg (таблица users ещё пуста), сразу становится
+    // superuser — без этого некому было бы назначать роли остальным. На повторную регистрацию
+    // (ON CONFLICT DO UPDATE) роль не влияет — SET ниже её не трогает.
     await this.pool.query(
-      `INSERT INTO users (id, chat_id, name, username)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO users (id, chat_id, name, username, role)
+       VALUES ($1, $2, $3, $4, CASE WHEN NOT EXISTS (SELECT 1 FROM users) THEN 'superuser' ELSE 'user' END)
        ON CONFLICT (id) DO UPDATE
        SET chat_id = EXCLUDED.chat_id,
            name = EXCLUDED.name,

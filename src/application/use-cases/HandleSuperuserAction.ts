@@ -1,7 +1,11 @@
 import { BotUser } from '../../domain/entities/BotUser';
+import { Role } from '../../domain/entities/Role';
 import { UserRepository } from '../../domain/ports/UserRepository';
 
 const SEARCH_RESULT_LIMIT = 15;
+// promote — шаг вверх по лестнице, demote — шаг вниз. Суперпользователь теперь тоже достижим
+// повышением (не только назначается вручную в БД), поэтому и снятие прав должно быть симметричным.
+const ROLE_LADDER: Role[] = ['user', 'employee', 'superuser'];
 
 export type SuperuserAction =
   | { type: 'open_panel' }
@@ -16,7 +20,8 @@ export type SuperuserResult =
   | { kind: 'panel' }
   | { kind: 'user_list'; users: BotUser[]; truncated: boolean }
   | { kind: 'user_detail'; user: BotUser }
-  | { kind: 'user_not_found' };
+  | { kind: 'user_not_found' }
+  | { kind: 'last_superuser'; user: BotUser };
 
 export class HandleSuperuserAction {
   constructor(private readonly userRepository: UserRepository) {}
@@ -47,16 +52,37 @@ export class HandleSuperuserAction {
         return user ? { kind: 'user_detail', user } : { kind: 'user_not_found' };
       }
 
-      case 'promote':
+      case 'promote': {
+        const target = await this.userRepository.findById(action.targetId);
+        if (!target) {
+          return { kind: 'user_not_found' };
+        }
+        const currentIndex = ROLE_LADDER.indexOf(target.role);
+        if (currentIndex >= ROLE_LADDER.length - 1) {
+          return { kind: 'user_detail', user: target };
+        }
+        const newRole = ROLE_LADDER[currentIndex + 1];
+        await this.userRepository.setRole(action.targetId, newRole);
+        return { kind: 'user_detail', user: { ...target, role: newRole } };
+      }
+
       case 'demote': {
         const target = await this.userRepository.findById(action.targetId);
         if (!target) {
           return { kind: 'user_not_found' };
         }
-        if (target.role === 'superuser') {
+        const currentIndex = ROLE_LADDER.indexOf(target.role);
+        if (currentIndex <= 0) {
           return { kind: 'user_detail', user: target };
         }
-        const newRole = action.type === 'promote' ? 'employee' : 'user';
+        if (target.role === 'superuser') {
+          const superusers = await this.userRepository.findByRole('superuser');
+          if (superusers.length <= 1) {
+            // Иначе управлять ролями стало бы некому — только повторное назначение вручную через БД.
+            return { kind: 'last_superuser', user: target };
+          }
+        }
+        const newRole = ROLE_LADDER[currentIndex - 1];
         await this.userRepository.setRole(action.targetId, newRole);
         return { kind: 'user_detail', user: { ...target, role: newRole } };
       }

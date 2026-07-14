@@ -64,11 +64,31 @@ export function buildSuperuserView(result: SuperuserResult): SuperuserView | nul
         return {
           text,
           buttons: [
+            [button.callback('⬆️ Назначить суперпользователем', `admin:promote:${user.id}`)],
             [button.callback('➖ Снять сотрудника', `admin:demote:${user.id}`)],
             [BACK_TO_PANEL_BUTTON],
           ],
         };
       }
+      // superuser
+      return {
+        text,
+        buttons: [
+          [button.callback('⬇️ Снять права суперпользователя', `admin:demote:${user.id}`)],
+          [BACK_TO_PANEL_BUTTON],
+        ],
+      };
+    }
+
+    case 'last_superuser': {
+      const { user } = result;
+      const text = [
+        `**${user.name}**`,
+        `id: ${user.id}`,
+        `Роль: ${roleLabel(user.role)}`,
+        '',
+        '⚠️ Это последний суперпользователь — снять права нельзя, иначе управлять ролями будет некому. Сначала назначьте суперпользователем кого-то ещё.',
+      ].join('\n');
       return { text, buttons: [[BACK_TO_PANEL_BUTTON]] };
     }
 
