@@ -1,10 +1,17 @@
 import 'dotenv/config';
 import { createPool } from './pool';
+import { ensureDatabaseExists } from './ensureDatabase';
 import { seedInitialContent } from './seedContent';
 
 const pool = createPool();
 
 async function migrate(): Promise<void> {
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    throw new Error('DATABASE_URL is not set');
+  }
+  await ensureDatabaseExists(connectionString);
+
   // "sections" — таблица из самой первой (плоской) схемы, до перехода на рекурсивные "nodes".
   // Больше нигде не используется, поэтому безопасно дропается при каждом запуске.
   // pages/page_attachments/nodes — НЕ трогаем: там боевой контент, дропать нельзя.
