@@ -23,7 +23,7 @@
 
 TypeScript, [@maxhub/max-bot-api](https://www.npmjs.com/package/@maxhub/max-bot-api), PostgreSQL (`pg`), без веб-фреймворка — чистая архитектура (`domain` → `application` → `infrastructure`).
 
-## Установка
+## Установка (локально, для разработки)
 
 ```bash
 npm install
@@ -32,6 +32,13 @@ cp .env.example .env
 npm run migrate
 npm run dev
 ```
+
+### Развёртывание на сервере
+
+Пошаговые инструкции «с нуля» (установка Node.js/PostgreSQL, systemd/служба Windows, автозапуск после перезагрузки, устранение неполадок):
+
+- [`DEPLOY-WINDOWS.md`](DEPLOY-WINDOWS.md) — Windows 10 / Windows Server
+- [`DEPLOY-LINUX.md`](DEPLOY-LINUX.md) — Debian/Ubuntu (и другие дистрибутивы Linux)
 
 ### Переменные окружения
 
