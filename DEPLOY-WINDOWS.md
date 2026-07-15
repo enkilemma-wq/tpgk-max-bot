@@ -28,22 +28,40 @@ winget install PostgreSQL.PostgreSQL.18
 
 ### Вариант Б — без winget (прямая загрузка)
 
-Скачивает официальные установщики и ставит их тихо (без диалоговых окон), кроме PostgreSQL — у него будет одно окно, чтобы задать пароль.
+Скачивает официальные установщики и ставит их тихо (без диалоговых окон), кроме PostgreSQL — у него будет одно окно, чтобы задать пароль. Сайты раздачи иногда на пару секунд отвечают ошибкой (503) — ниже команда сама повторяет попытку и **останавливается с понятной ошибкой**, если скачать так и не вышло, вместо того чтобы продолжать со следующими командами вслепую и сыпать непонятными вторичными ошибками.
 
 ```powershell
+$ErrorActionPreference = 'Stop'
+
+function Get-FileWithRetry {
+  param([string]$Url, [string]$OutFile, [int]$MaxRetries = 5)
+  for ($i = 1; $i -le $MaxRetries; $i++) {
+    try {
+      Invoke-WebRequest $Url -OutFile $OutFile -UseBasicParsing
+      return
+    } catch {
+      Write-Warning "Попытка $i из $MaxRetries не удалась: $($_.Exception.Message)"
+      if ($i -eq $MaxRetries) { throw "Не удалось скачать $Url после $MaxRetries попыток. Подождите и запустите этот блок ещё раз." }
+      Start-Sleep -Seconds 5
+    }
+  }
+}
+
 # Node.js LTS — index.json содержит все релизы с пометкой, какой из них LTS
 $nodeReleases = Invoke-RestMethod "https://nodejs.org/dist/index.json"
 $nodeLts = $nodeReleases | Where-Object { $_.lts -ne $false } | Select-Object -First 1
 $nodeMsiUrl = "https://nodejs.org/dist/$($nodeLts.version)/node-$($nodeLts.version)-x64.msi"
-Invoke-WebRequest $nodeMsiUrl -OutFile "$env:TEMP\node-lts.msi"
+Get-FileWithRetry $nodeMsiUrl "$env:TEMP\node-lts.msi"
 Start-Process msiexec.exe -ArgumentList "/i `"$env:TEMP\node-lts.msi`" /quiet /norestart" -Wait
 
 # Git for Windows
 $gitRelease = Invoke-RestMethod "https://api.github.com/repos/git-for-windows/git/releases/latest"
 $gitAsset = $gitRelease.assets | Where-Object { $_.name -like "*64-bit.exe" } | Select-Object -First 1
-Invoke-WebRequest $gitAsset.browser_download_url -OutFile "$env:TEMP\git-setup.exe"
+Get-FileWithRetry $gitAsset.browser_download_url "$env:TEMP\git-setup.exe"
 Start-Process "$env:TEMP\git-setup.exe" -ArgumentList "/VERYSILENT /NORESTART" -Wait
 ```
+
+Если увидите жёлтое предупреждение `Попытка N из 5 не удалась` — это нормально, она повторится сама. Ошибка (красным, с `throw`) означает, что после 5 попыток так и не вышло — подождите минуту и запустите блок ещё раз.
 
 PostgreSQL официально распространяется только как графический установщик — скачайте его вручную с [postgresql.org/download/windows](https://www.postgresql.org/download/windows/) (кнопка «Download the installer», выберите версию под Windows x86-64) и запустите, приняв варианты по умолчанию. На одном из экранов установщик попросит задать **пароль для пользователя `postgres`** — запишите его, понадобится в шаге 4.
 
@@ -119,13 +137,31 @@ npm run build
 
 ## 7. Запустить бота как службу Windows (NSSM)
 
-Чтобы бот работал постоянно и сам перезапускался при сбое или перезагрузке сервера, оборачиваем его в службу Windows через [NSSM](https://nssm.cc/). Если у вас работает `winget` (см. шаг 1) — можно поставить им: `winget install NSSM.NSSM`. Если нет — вот прямая загрузка, работает без winget:
+Чтобы бот работал постоянно и сам перезапускался при сбое или перезагрузке сервера, оборачиваем его в службу Windows через [NSSM](https://nssm.cc/). Если у вас работает `winget` (см. шаг 1) — можно поставить им: `winget install NSSM.NSSM`. Если нет — вот прямая загрузка, работает без winget. **Сайт nssm.cc периодически ненадолго отвечает ошибкой 503** — команда ниже сама повторяет попытку до 5 раз и понятно сообщит, если так и не вышло, вместо того чтобы продолжать распаковывать несуществующий файл:
 
 ```powershell
-Invoke-WebRequest "https://nssm.cc/release/nssm-2.24.zip" -OutFile "$env:TEMP\nssm.zip" -UseBasicParsing
+$ErrorActionPreference = 'Stop'
+
+function Get-FileWithRetry {
+  param([string]$Url, [string]$OutFile, [int]$MaxRetries = 5)
+  for ($i = 1; $i -le $MaxRetries; $i++) {
+    try {
+      Invoke-WebRequest $Url -OutFile $OutFile -UseBasicParsing
+      return
+    } catch {
+      Write-Warning "Попытка $i из $MaxRetries не удалась: $($_.Exception.Message)"
+      if ($i -eq $MaxRetries) { throw "Не удалось скачать $Url после $MaxRetries попыток. Подождите и запустите этот блок ещё раз." }
+      Start-Sleep -Seconds 5
+    }
+  }
+}
+
+Get-FileWithRetry "https://nssm.cc/release/nssm-2.24.zip" "$env:TEMP\nssm.zip"
 Expand-Archive "$env:TEMP\nssm.zip" -DestinationPath "$env:TEMP\nssm" -Force
 Copy-Item "$env:TEMP\nssm\nssm-2.24\win64\nssm.exe" "C:\Windows\nssm.exe"
 ```
+
+Если увидите жёлтое предупреждение `Попытка N из 5 не удалась` — это нормально, она повторится сама. Ошибка (красным, с `throw`) — после 5 попыток так и не вышло, подождите минуту и запустите блок ещё раз.
 
 Проверьте, что команда нашлась:
 
@@ -189,7 +225,7 @@ nssm start TpgkMaxBot
 
 **`winget : Имя "winget" не распознано...`** — на этой системе не установлен App Installer (обычная ситуация на Windows Server; на Windows 10 — если давно не обновлялись или нет доступа к Microsoft Store). Ничего страшного: используйте «вариант Б» в шаге 1 и прямую загрузку NSSM в шаге 7 — они не зависят от winget вообще.
 
-**`503 Service Temporarily Unavailable` при загрузке NSSM** — сайт nssm.cc иногда ненадолго подтормаживает. Просто повторите ту же команду ещё раз через несколько секунд.
+**`503 Service Temporarily Unavailable` при загрузке NSSM или установщиков в шаге 1** — сайты периодически ненадолго подтормаживают. Команды в этой инструкции сами повторяют попытку до 5 раз; если видите жёлтое `Попытка N из 5 не удалась` — это нормально, просто подождите, пока она повторится сама. Если после всех 5 попыток команда всё же завершилась ошибкой (`throw`, красным) — подождите минуту и запустите тот же блок ещё раз целиком.
 
 **`DATABASE_URL is not set`** — файл `.env` не создан или пустой. Повторите шаг 3.
 
