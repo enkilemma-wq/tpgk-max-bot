@@ -6,6 +6,16 @@
 
 ## 1. Установить Node.js, Git и PostgreSQL
 
+Сначала проверьте, работает ли у вас `winget`:
+
+```powershell
+winget --version
+```
+
+Если выводит версию — используйте **вариант А**, он быстрее. Если пишет «имя не распознано» (так бывает на Windows Server — там `winget` не ставится по умолчанию, — и на некоторых Windows 10 без доступа к Microsoft Store) — переходите сразу к **варианту Б**, он гарантированно работает в любом случае и его тоже можно просто скопировать и выполнить целиком.
+
+### Вариант А — через winget
+
 ```powershell
 winget install OpenJS.NodeJS.LTS
 winget install Git.Git
@@ -14,14 +24,39 @@ winget install PostgreSQL.PostgreSQL.18
 
 Установщик PostgreSQL откроет графическое окно — там нужно один раз задать **пароль для пользователя `postgres`**. Запишите его, он понадобится в шаге 4.
 
-Закройте и заново откройте PowerShell (от имени администратора), чтобы `node`, `git` и `psql` подхватились в PATH. Проверьте:
+Закройте и заново откройте PowerShell (от имени администратора), чтобы `node`, `git` и `psql` подхватились в PATH.
+
+### Вариант Б — без winget (прямая загрузка)
+
+Скачивает официальные установщики и ставит их тихо (без диалоговых окон), кроме PostgreSQL — у него будет одно окно, чтобы задать пароль.
+
+```powershell
+# Node.js LTS — index.json содержит все релизы с пометкой, какой из них LTS
+$nodeReleases = Invoke-RestMethod "https://nodejs.org/dist/index.json"
+$nodeLts = $nodeReleases | Where-Object { $_.lts -ne $false } | Select-Object -First 1
+$nodeMsiUrl = "https://nodejs.org/dist/$($nodeLts.version)/node-$($nodeLts.version)-x64.msi"
+Invoke-WebRequest $nodeMsiUrl -OutFile "$env:TEMP\node-lts.msi"
+Start-Process msiexec.exe -ArgumentList "/i `"$env:TEMP\node-lts.msi`" /quiet /norestart" -Wait
+
+# Git for Windows
+$gitRelease = Invoke-RestMethod "https://api.github.com/repos/git-for-windows/git/releases/latest"
+$gitAsset = $gitRelease.assets | Where-Object { $_.name -like "*64-bit.exe" } | Select-Object -First 1
+Invoke-WebRequest $gitAsset.browser_download_url -OutFile "$env:TEMP\git-setup.exe"
+Start-Process "$env:TEMP\git-setup.exe" -ArgumentList "/VERYSILENT /NORESTART" -Wait
+```
+
+PostgreSQL официально распространяется только как графический установщик — скачайте его вручную с [postgresql.org/download/windows](https://www.postgresql.org/download/windows/) (кнопка «Download the installer», выберите версию под Windows x86-64) и запустите, приняв варианты по умолчанию. На одном из экранов установщик попросит задать **пароль для пользователя `postgres`** — запишите его, понадобится в шаге 4.
+
+Закройте и заново откройте PowerShell (от имени администратора), чтобы `node`, `git` и `psql` подхватились в PATH.
+
+### Проверка (для обоих вариантов)
 
 ```powershell
 node -v
 git --version
 ```
 
-Оба должны вывести версию, а не ошибку «команда не найдена».
+Оба должны вывести версию, а не ошибку «команда не найдена». Если `node`/`git` всё равно не находятся после переоткрытия PowerShell — перезайдите в Windows (выход/вход) или перезагрузите сервер, PATH иногда обновляется только так.
 
 ## 2. Скачать проект
 
@@ -74,13 +109,19 @@ npm run build
 
 ## 7. Запустить бота как службу Windows (NSSM)
 
-Чтобы бот работал постоянно и сам перезапускался при сбое или перезагрузке сервера, оборачиваем его в службу Windows через [NSSM](https://nssm.cc/).
+Чтобы бот работал постоянно и сам перезапускался при сбое или перезагрузке сервера, оборачиваем его в службу Windows через [NSSM](https://nssm.cc/). Если у вас работает `winget` (см. шаг 1) — можно поставить им: `winget install NSSM.NSSM`. Если нет — вот прямая загрузка, работает без winget:
 
 ```powershell
-winget install NSSM.NSSM
+Invoke-WebRequest "https://nssm.cc/release/nssm-2.24.zip" -OutFile "$env:TEMP\nssm.zip" -UseBasicParsing
+Expand-Archive "$env:TEMP\nssm.zip" -DestinationPath "$env:TEMP\nssm" -Force
+Copy-Item "$env:TEMP\nssm\nssm-2.24\win64\nssm.exe" "C:\Windows\nssm.exe"
 ```
 
-Если winget не находит пакет — скачайте NSSM с официального сайта nssm.cc и положите `nssm.exe` в папку, добавленную в PATH (например, `C:\Windows`).
+Проверьте, что команда нашлась:
+
+```powershell
+nssm version
+```
 
 Создайте службу:
 
@@ -133,6 +174,10 @@ nssm start TpgkMaxBot
 ```
 
 ## Устранение неполадок
+
+**`winget : Имя "winget" не распознано...`** — на этой системе не установлен App Installer (обычная ситуация на Windows Server; на Windows 10 — если давно не обновлялись или нет доступа к Microsoft Store). Ничего страшного: используйте «вариант Б» в шаге 1 и прямую загрузку NSSM в шаге 7 — они не зависят от winget вообще.
+
+**`503 Service Temporarily Unavailable` при загрузке NSSM** — сайт nssm.cc иногда ненадолго подтормаживает. Просто повторите ту же команду ещё раз через несколько секунд.
 
 **`DATABASE_URL is not set`** — файл `.env` не создан или пустой. Повторите шаг 3.
 
